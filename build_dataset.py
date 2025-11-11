@@ -1,0 +1,233 @@
+import os
+import numpy as np
+import torch
+import cv2
+import glob
+import imageio.v2 as imageio
+import zarr
+import pickle
+import av
+from tqdm import tqdm
+import concurrent.futures
+import multiprocessing
+from collections import defaultdict
+
+from umi.common.cv_util import (
+    parse_fisheye_intrinsics,
+    FisheyeRectConverter,
+    get_image_transform, 
+    draw_predefined_mask,
+    inpaint_tag,
+    get_mirror_crop_slices
+)
+
+from diffusion_policy.common.replay_buffer import ReplayBuffer
+from diffusion_policy.codecs.imagecodecs_numcodecs import register_codecs, JpegXl
+register_codecs()
+
+from vine_prune.utils.io import read_pickle
+
+def format_int(ind):
+    return "{:0>6d}".format(ind)
+
+data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_place_exp/demos'
+skip_exps = []
+
+subdirs = []
+for subdir_name in os.listdir(data_dir):
+    if subdir_name in skip_exps:
+        continue
+    subdirs.append(os.path.join(data_dir, subdir_name))
+
+subdirs = sorted(subdirs)
+
+output = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/example_demo_session/my_zarr.zarr.zip'
+
+if True:
+
+    out_replay_buffer = ReplayBuffer.create_empty_zarr(
+        storage=zarr.MemoryStore())
+
+    all_videos = set()
+    vid_args = list()
+
+    buffer_start = 0
+
+    for subdir in subdirs:
+        training_data_dir = os.path.join(subdir, 'training_data')
+        image_dir = os.path.join(training_data_dir, 'images')
+
+        metadata_path = f'{training_data_dir}/metadata.pkl'
+        metadata = read_pickle(metadata_path)
+
+        gripper = metadata['gripper_info']
+        gripper_id = 0
+
+        episode_data = dict()
+
+        eef_pose = gripper['tcp_pose']
+        eef_pos = eef_pose[...,:3]
+        eef_rot = eef_pose[...,3:]
+        # gripper_widths = gripper['gripper_widths']
+
+        is_closed_orig = gripper['is_closed']
+        is_closed = np.zeros_like(is_closed_orig)
+        # TODO assuming one object grasp
+        closed_start = np.argwhere(is_closed_orig > 0).min()
+        closed_end = np.argwhere(is_closed_orig == 1.0).max() + 1
+        is_closed[closed_start:closed_end] = 1.0
+
+        assert is_closed[0] == 0
+        assert is_closed[-1] == 0
+
+        # set to match umi
+        # gripper_widths[gripper_widths > 0.85] = 0.85
+        demo_start_pose = np.empty_like(eef_pose)
+        demo_start_pose[:] = gripper['demo_start_pose']
+        demo_end_pose = np.empty_like(eef_pose)
+        demo_end_pose[:] = gripper['demo_end_pose']
+
+        robot_name = f'robot{gripper_id}'
+        episode_data[robot_name + '_eef_pos'] = eef_pos.astype(np.float32)
+        episode_data[robot_name + '_eef_rot_axis_angle'] = eef_rot.astype(np.float32)
+        episode_data[robot_name + '_gripper_closed'] = np.expand_dims(is_closed, axis=-1).astype(np.float32)
+        episode_data[robot_name + '_demo_start_pose'] = demo_start_pose
+        episode_data[robot_name + '_demo_end_pose'] = demo_end_pose
+
+        out_replay_buffer.add_episode(data=episode_data, compressors=None)
+    
+        vid_info = metadata['vid_info']
+
+        video_path = os.path.join(training_data_dir, 'vid.mp4')
+        video_start, video_end = vid_info['video_start_end']
+
+        n_frames = video_end - video_start
+
+        cam_id = 0
+
+        videos_dict = defaultdict(list)
+
+        videos_dict[str(video_path)].append({
+                    'camera_idx': cam_id,
+                    'frame_start': video_start,
+                    'frame_end': video_end,
+                    'buffer_start': buffer_start
+                })
+
+        buffer_start += n_frames
+
+        vid_args.extend(videos_dict.items())
+        all_videos.update(videos_dict.keys())
+
+    print(f"{len(all_videos)} videos used in total!")
+
+    with av.open(vid_args[0][0]) as container:
+        in_stream = container.streams.video[0]
+        ih, iw = in_stream.height, in_stream.width
+
+    # dump images
+    compression_level=99
+    img_compressor = JpegXl(level=compression_level, numthreads=1)
+
+    out_res = '224,224'
+    out_res = tuple(int(x) for x in out_res.split(','))
+
+    for cam_id in range(1):
+        name = f'camera{cam_id}_rgb'
+        _ = out_replay_buffer.data.require_dataset(
+            name=name,
+            shape=(out_replay_buffer['robot0_eef_pos'].shape[0],) + out_res + (3,),
+            chunks=(1,) + out_res + (3,),
+            compressor=img_compressor,
+            dtype=np.uint8
+        )
+
+    def video_to_zarr(replay_buffer, mp4_path, tasks):
+        resize_tf = get_image_transform(
+            in_res=(iw, ih),
+            out_res=out_res
+        )
+        tasks = sorted(tasks, key=lambda x: x['frame_start'])
+        camera_idx = None
+        for task in tasks:
+            if camera_idx is None:
+                camera_idx = task['camera_idx']
+            else:
+                assert camera_idx == task['camera_idx']
+        name = f'camera{camera_idx}_rgb'
+        img_array = replay_buffer.data[name]
+        
+        curr_task_idx = 0
+        
+        is_mirror = None
+        
+        with av.open(mp4_path) as container:
+            in_stream = container.streams.video[0]
+            # in_stream.thread_type = "AUTO"
+            in_stream.thread_count = 1
+            buffer_idx = 0
+            for frame_idx, frame in tqdm(enumerate(container.decode(in_stream)), total=in_stream.frames, leave=False):
+                if curr_task_idx >= len(tasks):
+                    # all tasks done
+                    break
+                
+                if frame_idx < tasks[curr_task_idx]['frame_start']:
+                    # current task not started
+                    continue
+                elif frame_idx < tasks[curr_task_idx]['frame_end']:
+                    if frame_idx == tasks[curr_task_idx]['frame_start']:
+                        buffer_idx = tasks[curr_task_idx]['buffer_start']
+                    
+                    # do current task
+                    img = frame.to_ndarray(format='rgb24')
+                        
+                    # mask out gripper
+                    # img = draw_predefined_mask(img, color=(0,0,0), 
+                    #     mirror=no_mirror, gripper=True, finger=False)
+
+                    img = resize_tf(img)
+                        
+                    # compress image
+                    img_array[buffer_idx] = img
+                    buffer_idx += 1
+                    
+                    if (frame_idx + 1) == tasks[curr_task_idx]['frame_end']:
+                        # current task done, advance
+                        curr_task_idx += 1
+                else:
+                    assert False
+
+    num_workers = 1
+    if num_workers is None:
+        num_workers = multiprocessing.cpu_count()
+    cv2.setNumThreads(1)
+
+    with tqdm(total=len(vid_args)) as pbar:
+        # one chunk per thread, therefore no synchronization needed
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = set()
+            for mp4_path, tasks in vid_args:
+                if len(futures) >= num_workers:
+                    # limit number of inflight tasks
+                    completed, futures = concurrent.futures.wait(futures, 
+                        return_when=concurrent.futures.FIRST_COMPLETED)
+                    pbar.update(len(completed))
+
+                futures.add(executor.submit(video_to_zarr, 
+                    out_replay_buffer, mp4_path, tasks))
+
+            completed, futures = concurrent.futures.wait(futures)
+            pbar.update(len(completed))
+
+    print([x.result() for x in completed])
+
+    # dump to disk
+    print(f"Saving ReplayBuffer to {output}")
+    with zarr.ZipStore(output, mode='w') as zip_store:
+        out_replay_buffer.save_to_store(
+            store=zip_store
+        )
+    print(f"Done! {len(all_videos)} videos used in total!")
+
+
+    

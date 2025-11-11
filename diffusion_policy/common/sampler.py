@@ -35,8 +35,12 @@ class SequenceSampler:
         episode_ends = replay_buffer.episode_ends[:]
 
         # load gripper_width
-        gripper_width = replay_buffer['robot0_gripper_width'][:, 0]
-        gripper_width_threshold = 0.08
+        # gripper_width = replay_buffer['robot0_gripper_width'][:, 0]
+        # gripper_width_threshold = 0.08
+        
+        # load gripper_closed
+        gripper_closed = replay_buffer['robot0_gripper_closed'][:, 0]
+
         self.repeat_frame_prob = repeat_frame_prob
 
         # create indices, including (current_idx, start_idx, end_idx)
@@ -53,7 +57,9 @@ class SequenceSampler:
             for current_idx in range(start_idx, end_idx):
                 if not action_padding and end_idx < current_idx + (key_horizon['action'] - 1) * key_down_sample_steps['action'] + 1:
                     continue
-                if gripper_width[current_idx] < gripper_width_threshold:
+                # if gripper_width[current_idx] < gripper_width_threshold:
+                #     before_first_grasp = False
+                if gripper_closed[current_idx] > 0:
                     before_first_grasp = False
                 indices.append((current_idx, start_idx, end_idx, before_first_grasp))
         
@@ -65,11 +71,13 @@ class SequenceSampler:
                 self.num_robot += 1
 
             if key.endswith('pos_abs'):
+                raise RuntimeError('not supported')
                 axis = shape_meta['obs'][key]['axis']
                 if isinstance(axis, int):
                     axis = [axis]
                 self.replay_buffer[key] = replay_buffer[key[:-4]][:, list(axis)]
             elif key.endswith('quat_abs'):
+                raise RuntimeError('not supported')
                 axis = shape_meta['obs'][key]['axis']
                 if isinstance(axis, int):
                     axis = [axis]
@@ -78,6 +86,7 @@ class SequenceSampler:
                 rot_out = st.Rotation.from_quat(rot_in).as_euler('XYZ')
                 self.replay_buffer[key] = rot_out[:, list(axis)]
             elif key.endswith('axis_angle_abs'):
+                raise RuntimeError('not supported')
                 axis = shape_meta['obs'][key]['axis']
                 if isinstance(axis, int):
                     axis = [axis]
@@ -89,14 +98,14 @@ class SequenceSampler:
         for key in rgb_keys:
             self.replay_buffer[key] = replay_buffer[key]
         
-        
         if 'action' in replay_buffer:
             self.replay_buffer['action'] = replay_buffer['action'][:]
         else:
             # construct action (concatenation of [eef_pos, eef_rot, gripper_width])
             actions = list()
             for robot_idx in range(self.num_robot):
-                for cat in ['eef_pos', 'eef_rot_axis_angle', 'gripper_width']:
+                # for cat in ['eef_pos', 'eef_rot_axis_angle', 'gripper_width']:
+                for cat in ['eef_pos', 'eef_rot_axis_angle', 'gripper_closed']:
                     key = f'robot{robot_idx}_{cat}'
                     if key in self.replay_buffer:
                         actions.append(self.replay_buffer[key])

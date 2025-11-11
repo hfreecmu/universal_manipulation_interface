@@ -26,7 +26,7 @@ from umi.common.pose_util import pose_to_mat, mat_to_pose10d
 
 register_codecs()
 
-class UmiDataset(BaseDataset):
+class HandDataset(BaseDataset):
     def __init__(self,
         shape_meta: dict,
         dataset_path: str,
@@ -39,54 +39,10 @@ class UmiDataset(BaseDataset):
         val_ratio: float=0.0,
         max_duration: Optional[float]=None
     ):
+        
         self.pose_repr = pose_repr
         self.obs_pose_repr = self.pose_repr.get('obs_pose_repr', 'rel')
         self.action_pose_repr = self.pose_repr.get('action_pose_repr', 'rel')
-        
-        if cache_dir is None:
-            # load into memory store
-            with zarr.ZipStore(dataset_path, mode='r') as zip_store:
-                replay_buffer = ReplayBuffer.copy_from_store(
-                    src_store=zip_store, 
-                    store=zarr.MemoryStore()
-                )
-        else:
-            # TODO: refactor into a stand alone function?
-            # determine path name
-            mod_time = os.path.getmtime(dataset_path)
-            stamp = datetime.fromtimestamp(mod_time).isoformat()
-            stem_name = os.path.basename(dataset_path).split('.')[0]
-            cache_name = '_'.join([stem_name, stamp])
-            cache_dir = pathlib.Path(os.path.expanduser(cache_dir))
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_path = cache_dir.joinpath(cache_name + '.zarr.mdb')
-            lock_path = cache_dir.joinpath(cache_name + '.lock')
-            
-            # load cached file
-            print('Acquiring lock on cache.')
-            with FileLock(lock_path):
-                # cache does not exist
-                if not cache_path.exists():
-                    try:
-                        with zarr.LMDBStore(str(cache_path),     
-                            writemap=True, metasync=False, sync=False, map_async=True, lock=False
-                            ) as lmdb_store:
-                            with zarr.ZipStore(dataset_path, mode='r') as zip_store:
-                                print(f"Copying data to {str(cache_path)}")
-                                ReplayBuffer.copy_from_store(
-                                    src_store=zip_store,
-                                    store=lmdb_store
-                                )
-                        print("Cache written to disk!")
-                    except Exception as e:
-                        shutil.rmtree(cache_path)
-                        raise e
-            
-            # open read-only lmdb store
-            store = zarr.LMDBStore(str(cache_path), readonly=True, lock=False)
-            replay_buffer = ReplayBuffer.create_from_group(
-                group=zarr.group(store)
-            )
         
         self.num_robot = 0
         rgb_keys = list()
@@ -123,6 +79,14 @@ class UmiDataset(BaseDataset):
         key_latency_steps['action'] = shape_meta['action']['latency_steps']
         key_down_sample_steps['action'] = shape_meta['action']['down_sample_steps']
 
+        if cache_dir is None:
+            # load into memory store
+            with zarr.ZipStore(dataset_path, mode='r') as zip_store:
+                replay_buffer = ReplayBuffer.copy_from_store(
+                    src_store=zip_store, 
+                    store=zarr.MemoryStore()
+                )
+
         val_mask = get_val_mask(
             n_episodes=replay_buffer.n_episodes, 
             val_ratio=val_ratio,
@@ -135,6 +99,14 @@ class UmiDataset(BaseDataset):
             if not 'wrt' in key:
                 self.sampler_lowdim_keys.append(key)
     
+        test = [key for key in replay_buffer.keys()]
+        # camera0_rgb, robot0_demo_end_pose, robot0_demo_start_pose, robot0_eef_pos, robot0_eef_rot_axis_angle, robot0_gripper_width
+
+        eef_pos = np.array(replay_buffer['robot0_eef_pos'])
+        eef_rot = np.array(replay_buffer['robot0_eef_rot_axis_angle'])
+        start_pose = np.array(replay_buffer['robot0_demo_start_pose'])
+        gripper_width = np.array(replay_buffer['robot0_gripper_width'])
+
         for key in replay_buffer.keys():
             if key.endswith('_demo_start_pose') or key.endswith('_demo_end_pose'):
                 self.sampler_lowdim_keys.append(key)
@@ -222,8 +194,7 @@ class UmiDataset(BaseDataset):
         for i in range(self.num_robot):
             action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a: i * dim_a + 3])))              # pos
             action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a + 3: (i + 1) * dim_a - 1]))) # rot
-            # action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # gripper
-            action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # is closed
+            action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # gripper
 
         normalizer['action'] = concatenate_normalizer(action_normalizers)
 
@@ -237,10 +208,8 @@ class UmiDataset(BaseDataset):
                 this_normalizer = get_range_normalizer_from_stat(stat)
             elif key.endswith('rot_axis_angle') or 'rot_axis_angle_wrt' in key:
                 this_normalizer = get_identity_normalizer_from_stat(stat)
-            # elif key.endswith('gripper_width'):
-            #     this_normalizer = get_range_normalizer_from_stat(stat)
-            elif key.endswith('gripper_closed'):
-                this_normalizer = get_identity_normalizer_from_stat(stat)
+            elif key.endswith('gripper_width'):
+                this_normalizer = get_range_normalizer_from_stat(stat)
             else:
                 raise RuntimeError('unsupported')
             normalizer[key] = this_normalizer
@@ -272,7 +241,7 @@ class UmiDataset(BaseDataset):
         for key in self.sampler_lowdim_keys:
             obs_dict[key] = data[key].astype(np.float32)
             del data[key]
-        
+
         # generate relative pose between two ees
         for robot_id in range(self.num_robot):
             # convert pose to mat

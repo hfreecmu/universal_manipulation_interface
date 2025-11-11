@@ -1,10 +1,12 @@
 name: umi
 
-camera_obs_latency: 0.125
+# camera_obs_latency: 0.125
+camera_obs_latency: 0.0
 robot_obs_latency: 0.0001
 gripper_obs_latency: 0.02
 dataset_frequeny: 0 #59.94
-obs_down_sample_steps: 3 # 3, 1
+# obs_down_sample_steps: 3 # 3, 1
+obs_down_sample_steps: 1
 
 low_dim_obs_horizon: 2
 img_obs_horizon: 2
@@ -51,13 +53,21 @@ shape_meta: &shape_meta
       type: low_dim
       rotation_rep: rotation_6d
       ignore_by_policy: ${task.ignore_proprioception}
-    robot0_gripper_width:
+    # robot0_gripper_width:
+    #   shape: [1]
+    #   horizon: ${task.low_dim_obs_horizon} # int
+    #   latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.gripper_obs_latency}) * ${task.dataset_frequeny}'} # float
+    #   down_sample_steps: ${task.obs_down_sample_steps} # float
+    #   type: low_dim
+    #   ignore_by_policy: ${task.ignore_proprioception}
+    robot0_gripper_closed:
       shape: [1]
       horizon: ${task.low_dim_obs_horizon} # int
       latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.gripper_obs_latency}) * ${task.dataset_frequeny}'} # float
       down_sample_steps: ${task.obs_down_sample_steps} # float
       type: low_dim
-      ignore_by_policy: ${task.ignore_proprioception}
+      # ignore_by_policy: ${task.ignore_proprioception}
+      ignore_by_policy: True
 
     # pose with respect to episode start
     # robot0_eef_pos_wrt_start:
@@ -67,14 +77,14 @@ shape_meta: &shape_meta
     #   down_sample_steps: ${task.obs_down_sample_steps} # float
     #   type: low_dim
     #   ignore_by_policy: ${task.ignore_proprioception}
-    robot0_eef_rot_axis_angle_wrt_start:
-      raw_shape: [3]
-      shape: [6]
-      horizon: ${task.low_dim_obs_horizon} # int
-      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
-      down_sample_steps: ${task.obs_down_sample_steps} # float
-      type: low_dim
-      ignore_by_policy: ${task.ignore_proprioception}
+    # robot0_eef_rot_axis_angle_wrt_start:
+    #   raw_shape: [3]
+    #   shape: [6]
+    #   horizon: ${task.low_dim_obs_horizon} # int
+    #   latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+    #   down_sample_steps: ${task.obs_down_sample_steps} # float
+    #   type: low_dim
+    #   ignore_by_policy: ${task.ignore_proprioception}
   action: 
     shape: [10]
     horizon: ${task.action_horizon}
@@ -93,6 +103,7 @@ env_runner:
 
 dataset:
   _target_: diffusion_policy.dataset.umi_dataset.UmiDataset
+  # _target_: diffusion_policy.dataset.hand_dataset.HandDataset
   shape_meta: *shape_meta
   dataset_path: ${task.dataset_path}
   cache_dir: null
