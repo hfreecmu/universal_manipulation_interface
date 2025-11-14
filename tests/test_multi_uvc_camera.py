@@ -24,12 +24,12 @@ def test():
     reset_all_elgato_devices()
 
     # Wait for all v4l cameras to be back online
-    time.sleep(0.1)
+    time.sleep(0.5)
     v4l_paths = get_sorted_v4l_paths()
 
     resolution = [
-        (3840, 2160),
-        (1280, 720),
+        #(3840, 2160),
+        #(1280, 720),
         (1280, 720)
     ]
 
@@ -42,7 +42,8 @@ def test():
             return data
         transform.append(tf)
 
-    fps = [30, 60, 60]
+    # fps = [30, 60, 60]
+    fps = [60]
     video_recorder = [
     VideoRecorder.create_hevc_nvenc(
         fps=f,
@@ -58,8 +59,9 @@ def test():
                 resolution=resolution,
                 put_fps=10,
                 capture_fps=fps,
-                record_fps=fps,
-                cap_buffer_size=[3,1,1],
+                #record_fps=fps,
+                # cap_buffer_size=[3,1,1],
+                cap_buffer_size=[1],
                 transform=transform,
                 recording_transform=None,
                 video_recorder=video_recorder,

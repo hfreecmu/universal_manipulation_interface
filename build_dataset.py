@@ -55,7 +55,6 @@ if True:
 
     for subdir in subdirs:
         training_data_dir = os.path.join(subdir, 'training_data')
-        image_dir = os.path.join(training_data_dir, 'images')
 
         metadata_path = f'{training_data_dir}/metadata.pkl'
         metadata = read_pickle(metadata_path)

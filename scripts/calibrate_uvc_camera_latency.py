@@ -29,6 +29,7 @@ def main(camera_idx, qr_size, fps, n_frames):
     # Find and reset all Elgato capture cards.
     # Required to workaround a firmware bug.
     reset_all_elgato_devices()
+    time.sleep(0.5)
     v4l_paths = get_sorted_v4l_paths()
     v4l_path = v4l_paths[camera_idx]
     get_max_k = n_frames

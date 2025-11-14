@@ -68,7 +68,7 @@ class TimmObsEncoder(ModuleAttrMixin):
             feature_aggregation: str='spatial_embedding',
             downsample_ratio: int=32,
             position_encording: str='learnable',
-
+            add_gaussian_blur: float=None,
         ):
         """
         Assumes rgb input: B,T,C,H,W
@@ -179,6 +179,7 @@ class TimmObsEncoder(ModuleAttrMixin):
         self.low_dim_keys = low_dim_keys
         self.key_shape_map = key_shape_map
         self.feature_aggregation = feature_aggregation
+        self.add_gaussian_blur = add_gaussian_blur
         if model_name.startswith('vit'):
             # assert self.feature_aggregation is None # vit uses the CLS token
             if self.feature_aggregation == 'all_tokens':
@@ -264,6 +265,8 @@ class TimmObsEncoder(ModuleAttrMixin):
             assert img.shape[2:] == self.key_shape_map[key]
             img = img.reshape(B*T, *img.shape[2:])
             img = self.key_transform_map[key](img)
+            if self.add_gaussian_blur:
+                img = img + torch.randn_like(img)*self.add_gaussian_blur
             raw_feature = self.key_model_map[key](img)
             feature = self.aggregate_feature(raw_feature)
             assert len(feature.shape) == 2 and feature.shape[0] == B * T

@@ -9,6 +9,7 @@ import cv2
 
 import gymnasium
 import splat_env
+import xarm_env
 
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from umi.real_world.real_inference_util import (get_real_obs_dict,
@@ -39,10 +40,8 @@ sys.path.append(GAUSSIAN_SPLATTING_DIR)
 from scene.gaussian_model import GaussianModel
 
 if True:
-    # ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.11/01.23.35_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    # ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.13/00.59.03_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    ckpt_path = 'data/outputs/2025.11.13/21.26.15_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_place_exp/demos/GX019757"
+    ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.11/01.23.35_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
+    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_place_exp/demos/GX019722"
 
     payload = torch.load(open(ckpt_path, 'rb'), map_location='cpu', pickle_module=dill)
     cfg = payload['cfg']
@@ -156,7 +155,23 @@ if True:
 
     env = gymnasium.make('splat_env/SplatWorld-v0', env_data=env_data)
 
+    # robot env
+    robot_env_data = {
+        'api': '192.168.1.212'
+    }
+    robot_env = gymnasium.make('xarm_env/Xarm-v0', env_data=robot_env_data)
+    robot_obs, _ = robot_env.reset()
+    robot_init_trans = robot_obs['ee_pose'][0:3]
+    robot_init_aa = robot_obs['ee_pose'][3:6]
+    robot_init_rot = R.from_rotvec(robot_init_aa).as_matrix()
+    robot_init_pose = create_pose(robot_init_rot, robot_init_trans)
+    #
+
     obs, _ = env.reset()
+
+    obs_init_pose = obs['ee_pose']
+    M_splat2robot = robot_init_pose @ np.linalg.inv(obs_init_pose)
+
     obs_vis = cv2.cvtColor(obs['rgb'], cv2.COLOR_RGB2BGR)
     cv2.imshow('obv_vis', obs_vis)
     cv2.waitKey(0)
@@ -223,17 +238,57 @@ if True:
 
             gripper_action = np.clip(aa[-1], 0, 1).round()
 
-            step = {
-                'ee_pose': aa[0:6],
+            ee_pose_aa = aa[0:6]
+            ee_trans = ee_pose_aa[0:3]
+            ee_aa = ee_pose_aa[3:]
+            ee_rot = R.from_rotvec(ee_aa).as_matrix()
+            ee_pose = create_pose(ee_rot, ee_trans)
+            robot_pose = M_splat2robot @ ee_pose
+            robot_trans = robot_pose[0:3, 3]
+            robot_rot = robot_pose[0:3, 0:3]
+            robot_aa = R.from_matrix(robot_rot).as_rotvec()
+            robot_pose = np.array(robot_trans.tolist() + robot_aa.tolist())
+            robot_action = {
+                'ee_pose': robot_pose,
                 'ee_gripper': gripper_action,
             }
+            robot_obs = robot_env.step(action=robot_action)[0]
+
+            robot_trans_update = robot_obs['ee_pose'][0:3]
+            robot_rot_update = R.from_rotvec(robot_obs['ee_pose'][3:]).as_matrix()
+            robot_pose_update = create_pose(robot_rot_update, robot_trans_update)
+            ee_pose_update = np.linalg.inv(M_splat2robot) @ robot_pose_update
+            ee_trans_update = ee_pose_update[0:3, 3]
+            ee_aa_update = R.from_matrix(ee_pose_update[0:3, 0:3]).as_rotvec()
+            ee_pose_update = np.array(ee_trans_update.tolist() + ee_aa_update.tolist())
+            step = {
+                'ee_pose': ee_pose_update,
+                'ee_gripper': gripper_action,
+            }
+
+            # step = {
+            #     'ee_pose': aa[0:6],
+            #     'ee_gripper': gripper_action,
+            # }
 
             step_res = env.step(step)
             obs = step_res[0]
 
             obs_vis = cv2.cvtColor(obs['rgb'], cv2.COLOR_RGB2BGR)
             cv2.imshow('obv_vis', obs_vis)
-            cv2.waitKey(10)
+            cv2.waitKey(1)
+
+            # obs_pose = obs['ee_pose']
+            # robot_pose = M_splat2robot @ obs_pose
+            # robot_trans = robot_pose[0:3, 3]
+            # robot_rot = robot_pose[0:3, 0:3]
+            # robot_aa = R.from_matrix(robot_rot).as_rotvec()
+            # robot_pose = np.array(robot_trans.tolist() + robot_aa.tolist())
+            # robot_action = {
+            #     'ee_pose': robot_pose,
+            #     'ee_gripper': obs['ee_gripper'],
+            # }
+            # robot_env.step(action=robot_action)
             
         #breakpoint()
     ###
