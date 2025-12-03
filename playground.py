@@ -39,15 +39,17 @@ sys.path.append(GAUSSIAN_SPLATTING_DIR)
 from scene.gaussian_model import GaussianModel
 
 if True:
-    # ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.11/01.23.35_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    # ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.13/00.59.03_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    ckpt_path = 'data/outputs/2025.11.13/21.26.15_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_place_exp/demos/GX019757"
+    ckpt_path = '/home/hfreeman/Downloads/latest.ckpt'
+    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/push_t_exp/demos/GX010241"
+    AUGMENT_EXTR = False
+    AUGMENT_INTR = False
 
     payload = torch.load(open(ckpt_path, 'rb'), map_location='cpu', pickle_module=dill)
     cfg = payload['cfg']
     print("model_name:", cfg.policy.obs_encoder.model_name)
     print("dataset_path:", cfg.task.dataset.dataset_path)
+    
+    cfg['training']['seed'] = np.random.randint(0, 15000)
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace = cls(cfg)
@@ -90,7 +92,7 @@ if True:
     scene_gaussians.load_ply(scene_splat_path)
 
     ee_gaussians = GaussianModel(3)
-    gripper_splat_path = os.path.join(ASSET_DIR, 'gripper_splat.ply')
+    gripper_splat_path = os.path.join(ASSET_DIR, 'gripper_splat_post_opt.ply')
     ee_gaussians.load_ply(gripper_splat_path)
 
     gripper_segment_path = os.path.join(ASSET_DIR, 'segmented_gripper.pkl')
@@ -114,6 +116,30 @@ if True:
         ee_2_cam['transform']['translation']['y'],
         ee_2_cam['transform']['translation']['z'],
     ])
+
+    if AUGMENT_EXTR:
+        # --- Rotation perturbation ---
+        rot_jitter_deg = 2.0  # max ~2 degrees
+        jitter_axis = np.random.randn(3)
+        jitter_axis /= (np.linalg.norm(jitter_axis) + 1e-9)
+        
+        # Option 1: Uniform distribution in [-rot_jitter_deg, +rot_jitter_deg]
+        jitter_angle = np.deg2rad(rot_jitter_deg) * (2 * np.random.rand() - 1)
+        
+        # Option 2: Normal distribution with rot_jitter_deg as std dev
+        # jitter_angle = np.deg2rad(rot_jitter_deg) * np.random.randn()
+        
+        jitter_rot = R.from_rotvec(jitter_axis * jitter_angle).as_matrix()
+        
+        # Apply rotation jitter (in world frame)
+        ee_2_cam_rot = jitter_rot @ ee_2_cam_rot
+        
+        # --- Translation perturbation ---
+        trans_jitter_std = 0.01  # 1 cm (0.01 m)
+        jitter_trans = trans_jitter_std * np.random.randn(3)
+        
+        # Apply translation jitter
+        ee_2_cam_trans = ee_2_cam_trans + jitter_trans
     M_ee2cam = create_pose(ee_2_cam_rot, ee_2_cam_trans)
 
     exp_info = read_info(data_dir)
@@ -122,6 +148,15 @@ if True:
     fisheye_K = torch.FloatTensor(np.array(fisheye_camera_info['K']).reshape(3, 3)).cuda()
     fisheye_D = torch.FloatTensor(np.array(fisheye_camera_info['D'])).cuda()
     fisheye_dims = [fisheye_camera_info['height'], fisheye_camera_info['width']]
+
+    if AUGMENT_INTR:
+        percent = 0.01
+        fisheye_K[0, 0] += torch.randn(1)[0].cuda() * percent * fisheye_K[0, 0]
+        fisheye_K[1, 1] += torch.randn(1)[0].cuda() * percent * fisheye_K[1, 1]
+        fisheye_K[0, 2] += torch.randn(1)[0].cuda() * percent * fisheye_K[0, 2]
+        fisheye_K[1, 2] += torch.randn(1)[0].cuda() * percent * fisheye_K[1, 2]
+        
+        fisheye_D += torch.randn(4).cuda() * percent * fisheye_D
 
     ee_init_trans = ee_data['transl'][0]
     ee_init_rot = R.from_rotvec(ee_data['global_orient'][0]).as_matrix()
@@ -216,7 +251,8 @@ if True:
             action = get_real_umi_action(raw_action, obs_data, action_pose_repr)
             del result
         
-        for action_ind in range(1, 9):
+        # for action_ind in range(1, 9):
+        for action_ind in range(1, 5):
             prev_obs = obs
         
             aa = action[action_ind]

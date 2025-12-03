@@ -84,7 +84,8 @@ def draw_text(
 def get_image_transform(
         input_res: Tuple[int,int]=(1280,720), 
         output_res: Tuple[int,int]=(640,480), 
-        bgr_to_rgb: bool=False):
+        bgr_to_rgb: bool=False,
+        is_mask: bool=False):
 
     iw, ih = input_res
     ow, oh = output_res
@@ -103,6 +104,9 @@ def get_image_transform(
         if ow > iw:
             interp_method = cv2.INTER_LINEAR
     
+    if is_mask:
+        interp_method = cv2.INTER_NEAREST
+
     w_slice_start = (rw - ow) // 2
     w_slice = slice(w_slice_start, w_slice_start + ow)
     h_slice_start = (rh - oh) // 2
@@ -112,11 +116,17 @@ def get_image_transform(
         c_slice = slice(None, None, -1)
 
     def transform(img: np.ndarray):
-        assert img.shape == ((ih,iw,3))
+        if not is_mask:
+            assert img.shape == ((ih,iw,3))
+        else: 
+            assert img.shape == ((ih,iw))
         # resize
         img = cv2.resize(img, (rw, rh), interpolation=interp_method)
         # crop
-        img = img[h_slice, w_slice, c_slice]
+        if not is_mask:
+            img = img[h_slice, w_slice, c_slice]
+        else:
+            img = img[h_slice, w_slice]
         return img
     return transform
 

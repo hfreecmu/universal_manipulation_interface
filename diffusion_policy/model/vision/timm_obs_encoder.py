@@ -8,6 +8,9 @@ import torch.nn.functional as F
 import torchvision
 import logging
 
+import cv2
+import numpy as np
+
 from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 
 from diffusion_policy.common.pytorch_util import replace_submodules
@@ -267,6 +270,11 @@ class TimmObsEncoder(ModuleAttrMixin):
             img = self.key_transform_map[key](img)
             if self.add_gaussian_blur:
                 img = img + torch.randn_like(img)*self.add_gaussian_blur
+
+            # cv2.imshow('final_im', cv2.cvtColor(((img[-1].permute(1,2,0).cpu().numpy())*255).astype(np.uint8), cv2.COLOR_BGR2RGB))
+            # cv2.waitKey(1)
+            # breakpoint()
+
             raw_feature = self.key_model_map[key](img)
             feature = self.aggregate_feature(raw_feature)
             assert len(feature.shape) == 2 and feature.shape[0] == B * T

@@ -16,7 +16,7 @@ def format_int(ind):
 
 # WARNING - assumes robot as started in ufactory studio
 
-OUTPUT_DIR = '/home/hfreeman/harry_ws/data/gopro/gopro_calib/fisheye_v2'
+OUTPUT_DIR = '/home/hfreeman/Downloads/debug'
 
 image_dir = os.path.join(OUTPUT_DIR, 'images')
 if not os.path.exists(image_dir):

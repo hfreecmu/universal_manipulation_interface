@@ -19,7 +19,7 @@ def format_int(ind):
 # WARNING - assumes robot as started in ufactory studio
 
 ROBOT_API = "192.168.1.212"
-OUTPUT_DIR = '/home/hfreeman/harry_ws/data/gopro/eye_in_hand_v2'
+OUTPUT_DIR = '/home/hfreeman/harry_ws/data/gopro/eye_in_hand'
 
 image_dir = os.path.join(OUTPUT_DIR, 'images')
 if not os.path.exists(image_dir):
@@ -108,7 +108,7 @@ if True:
             get_max_k=max_obs_buffer_size,
             receive_latency=camera_obs_latency,
             cap_buffer_size=cap_buffer_size,
-            #transform=???,
+            transform=vis_transform,
             vis_transform=vis_transform,
             video_recorder=video_recorder,
             verbose=False

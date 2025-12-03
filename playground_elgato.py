@@ -31,10 +31,14 @@ from diffusion_policy.common.pytorch_util import dict_apply
 from vine_prune.utils.general_utils import (
     create_pose,
 )
+from vine_prune.utils.paths import ASSET_DIR
+
+VALID_MASK = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'valid_area.png'), -1)
+GRIPPER_SEG_MASK = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'gripper_seg_mask.png'), -1)
+mask_input_res = (960, 720)
 
 with SharedMemoryManager() as shm_manager:
-    # ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.11/01.23.35_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
-    ckpt_path = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/data/outputs/2025.11.13/00.59.03_train_diffusion_unet_timm_umi/checkpoints/epoch=0110-train_loss=0.011.ckpt'
+    ckpt_path = '/home/hfreeman/Downloads/latest_place.ckpt'
 
     payload = torch.load(open(ckpt_path, 'rb'), map_location='cpu', pickle_module=dill)
     cfg = payload['cfg']
@@ -91,6 +95,17 @@ with SharedMemoryManager() as shm_manager:
             bgr_to_rgb=False
         )
         img = f(img)
+
+        f_mask = get_image_transform(
+            input_res=mask_input_res,
+            output_res=(rw,rh), 
+            is_mask=True)
+        valid_mask = np.ascontiguousarray(f_mask(VALID_MASK))
+        gripper_seg_mask = np.ascontiguousarray(f_mask(GRIPPER_SEG_MASK))
+
+        img[gripper_seg_mask > 0] = 255
+        img[valid_mask == 0] = 0
+
         data['color'] = img
         return data
     vis_transform =[vis_tf]
@@ -103,19 +118,32 @@ with SharedMemoryManager() as shm_manager:
             # obs output rgb
             bgr_to_rgb=True)
         img = np.ascontiguousarray(f(img))
+
+        f_mask = get_image_transform(
+            input_res=mask_input_res,
+            output_res=(224,224), 
+            is_mask=True)
+        valid_mask = np.ascontiguousarray(f_mask(VALID_MASK))
+        gripper_seg_mask = np.ascontiguousarray(f_mask(GRIPPER_SEG_MASK))
+
+        img[gripper_seg_mask > 0] = 255
+        img[valid_mask == 0] = 0
+
         data['color'] = img
         return data
     transform = [tf]
 
     max_obs_buffer_size = 60
-    camera_obs_latency = 0.125 #0.17
-    # camera_obs_latency = 0
+    #camera_obs_latency = 0.125 #0.17
+    camera_obs_latency = 0
+    # camera_obs_latency = 0.17
 
     enable_multi_cam_vis = True
 
     camera_obs_horizon=2
     camera_down_sample_steps=1
-    frequency = 10
+    # frequency = 10
+    frequency = 60
 
     camera = MultiUvcCamera(
             dev_video_paths=v4l_paths,
@@ -240,7 +268,10 @@ with SharedMemoryManager() as shm_manager:
             action = get_real_umi_action(raw_action, obs_data, action_pose_repr)
             del result
         
-        for action_ind in range(1, 9):
+        # breakpoint()
+        # time.sleep(1)
+        # for action_ind in range(0, 9):
+        for action_ind in range(1, 5):
             prev_obs = obs
         
             aa = action[action_ind]
@@ -252,13 +283,12 @@ with SharedMemoryManager() as shm_manager:
                 'ee_gripper': gripper_action,
             }
             
-            delta_trans = aa[0:3] - obs['ee_pose'][0:3]
-            breakpoint()
             robot_obs = robot_env.step(action=robot_action)[0]
 
             k = math.ceil(
                 camera_obs_horizon * camera_down_sample_steps \
                 * (60 / frequency)) + 2 # they say 2 here is optional
+                        
             last_camera_data = camera.get(k=k, out=last_camera_data)
             camera_data = last_camera_data[0]
             

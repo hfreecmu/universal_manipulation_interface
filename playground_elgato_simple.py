@@ -1,3 +1,4 @@
+import os
 import time
 import math
 import cv2
@@ -10,6 +11,9 @@ from multiprocessing.managers import SharedMemoryManager
 from umi.real_world.multi_uvc_camera import MultiUvcCamera
 from umi.real_world.video_recorder import VideoRecorder
 from umi.real_world.multi_camera_visualizer import MultiCameraVisualizer
+from umi.common.cv_util import draw_predefined_mask
+
+from vine_prune.utils.paths import ASSET_DIR
 
 reset_all_elgato_devices()
 time.sleep(0.5)
@@ -43,25 +47,61 @@ def vis_tf(data, input_res=res):
         bgr_to_rgb=False
     )
     img = f(img)
+
+    f_mask = get_image_transform(
+        input_res=mask_input_res,
+        output_res=(rw,rh), 
+        is_mask=True)
+    valid_mask = np.ascontiguousarray(f_mask(VALID_MASK))
+    gripper_seg_mask = np.ascontiguousarray(f_mask(GRIPPER_SEG_MASK))
+
+    img[gripper_seg_mask > 0] = 255
+    img[valid_mask == 0] = 0
+
     data['color'] = img
     return data
 vis_transform =[vis_tf]
 
-def tf(data, input_res=res):
+VALID_MASK = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'valid_area.png'), -1)
+GRIPPER_SEG_MASK = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'gripper_seg_mask.png'), -1)
+mask_input_res = (960, 720)
+
+# VALID_MASK = cv2.resize(VALID_MASK, (res[0], res[1]), interpolation=cv2.INTER_NEAREST)
+# GRIPPER_SEG_MASK = cv2.resize(GRIPPER_SEG_MASK, (res[0], res[1]), interpolation=cv2.INTER_NEAREST)
+
+def tf(data, input_res=res, mask_input_res=mask_input_res):
     img = data['color']
+
+    # img = np.copy(img)
+    # img[GRIPPER_SEG_MASK > 0] = 0
+    # img[VALID_MASK == 0] = 0
+
     f = get_image_transform(
         input_res=input_res,
         output_res=(224, 224), 
         # obs output rgb
         bgr_to_rgb=True)
     img = np.ascontiguousarray(f(img))
+
+    f_mask = get_image_transform(
+        input_res=mask_input_res,
+        output_res=(224, 224), 
+        is_mask=True)
+    valid_mask = np.ascontiguousarray(f_mask(VALID_MASK))
+    gripper_seg_mask = np.ascontiguousarray(f_mask(GRIPPER_SEG_MASK))
+
+    img[gripper_seg_mask > 0] = 255
+    img[valid_mask == 0] = 0
+
+    # img = draw_predefined_mask(img, color=(0,0,0), 
+    #                         mirror=False, gripper=False, finger=True, use_aa=True)
     data['color'] = img
     return data
 transform = [tf]
 
 max_obs_buffer_size = 60
-camera_obs_latency = 0.125 #0.17
-# camera_obs_latency = 0
+# camera_obs_latency = 0.125 #0.17
+camera_obs_latency = 0
 
 enable_multi_cam_vis = True
 

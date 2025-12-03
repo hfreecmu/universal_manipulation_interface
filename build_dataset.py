@@ -26,18 +26,35 @@ from diffusion_policy.codecs.imagecodecs_numcodecs import register_codecs, JpegX
 register_codecs()
 
 from vine_prune.utils.io import read_pickle
+from vine_prune.utils.paths import ASSET_DIR
 
 def format_int(ind):
     return "{:0>6d}".format(ind)
 
-data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_place_exp/demos'
+data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/push_t_exp/demos'
 skip_exps = []
 
 subdirs = []
 for subdir_name in os.listdir(data_dir):
     if subdir_name in skip_exps:
         continue
-    subdirs.append(os.path.join(data_dir, subdir_name))
+    
+    subdir = os.path.join(data_dir, subdir_name)
+    vid_path = os.path.join(subdir, 'training_data', 'vid.mp4')
+    if not os.path.exists(vid_path):
+        print('no vid for: ', subdir_name)
+        continue
+
+    subdirs.append(subdir)
+
+    aug_dir = os.path.join(subdir, 'augmentations')
+    for aug_name in os.listdir(aug_dir):
+        vid_path = os.path.join(aug_dir, aug_name, 'training_data', 'vid.mp4')
+        if not os.path.exists(vid_path):
+            continue
+        
+        subdirs.append(os.path.join(aug_dir, aug_name))
+
 
 subdirs = sorted(subdirs)
 
@@ -77,7 +94,7 @@ if True:
         is_closed[closed_start:closed_end] = 1.0
 
         assert is_closed[0] == 0
-        assert is_closed[-1] == 0
+        # assert is_closed[-1] == 0
 
         # set to match umi
         # gripper_widths[gripper_widths > 0.85] = 0.85
@@ -141,6 +158,9 @@ if True:
             dtype=np.uint8
         )
 
+    valid_mask = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'valid_area.png'), -1)
+    gripper_seg_mask = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'gripper_seg_mask.png'), -1)
+
     def video_to_zarr(replay_buffer, mp4_path, tasks):
         resize_tf = get_image_transform(
             in_res=(iw, ih),
@@ -179,13 +199,16 @@ if True:
                     
                     # do current task
                     img = frame.to_ndarray(format='rgb24')
+
+                    img[gripper_seg_mask > 0] = 255
+                    img[valid_mask == 0] = 0
                         
                     # mask out gripper
                     # img = draw_predefined_mask(img, color=(0,0,0), 
                     #     mirror=no_mirror, gripper=True, finger=False)
 
                     img = resize_tf(img)
-                        
+
                     # compress image
                     img_array[buffer_idx] = img
                     buffer_idx += 1
