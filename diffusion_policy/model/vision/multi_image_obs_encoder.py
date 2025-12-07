@@ -7,6 +7,9 @@ from diffusion_policy.model.vision.crop_randomizer import CropRandomizer
 from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 
+from diffusion_policy.model.vision.noise_randomizer import Noiser
+# from diffusion_policy.model.vision.eraser_randomizer import EraserRandomizer
+from diffusion_policy.model.vision.other_randomizer import OtherRandomizer
 
 class MultiImageObsEncoder(ModuleAttrMixin):
     def __init__(self,
@@ -21,7 +24,8 @@ class MultiImageObsEncoder(ModuleAttrMixin):
             share_rgb_model: bool=False,
             # renormalize rgb input with imagenet normalization
             # assuming input in [0,1]
-            imagenet_norm: bool=False
+            imagenet_norm: bool=False,
+            random_noise: bool=False,
         ):
         """
         Assumes rgb input: B,C,H,W
@@ -98,16 +102,25 @@ class MultiImageObsEncoder(ModuleAttrMixin):
                             pos_enc=False
                         )
                     else:
-                        this_normalizer = torchvision.transforms.CenterCrop(
+                        this_randomizer = torchvision.transforms.CenterCrop(
                             size=(h,w)
                         )
+
+                this_noiser = nn.Identity()
+                if random_noise:
+                    this_noiser = Noiser()
+
+                this_other = nn.Identity()
+                if random_noise:
+                    this_other = OtherRandomizer(do_jitter=True)
+
                 # configure normalizer
                 this_normalizer = nn.Identity()
                 if imagenet_norm:
                     this_normalizer = torchvision.transforms.Normalize(
                         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 
-                this_transform = nn.Sequential(this_resizer, this_randomizer, this_normalizer)
+                this_transform = nn.Sequential(this_resizer, this_other, this_noiser, this_randomizer, this_normalizer)
                 key_transform_map[key] = this_transform
             elif type == 'low_dim':
                 low_dim_keys.append(key)

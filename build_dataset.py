@@ -31,7 +31,7 @@ from vine_prune.utils.paths import ASSET_DIR
 def format_int(ind):
     return "{:0>6d}".format(ind)
 
-data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/push_t_exp/demos'
+data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/chili_mini/demos'
 skip_exps = []
 
 subdirs = []
@@ -202,7 +202,7 @@ if True:
 
                     img[gripper_seg_mask > 0] = 255
                     img[valid_mask == 0] = 0
-                        
+                    
                     # mask out gripper
                     # img = draw_predefined_mask(img, color=(0,0,0), 
                     #     mirror=no_mirror, gripper=True, finger=False)

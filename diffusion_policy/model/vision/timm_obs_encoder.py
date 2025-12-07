@@ -15,6 +15,12 @@ from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 
 from diffusion_policy.common.pytorch_util import replace_submodules
 
+from diffusion_policy.model.vision.crop_randomizer import CropRandomizer
+
+from diffusion_policy.model.vision.noise_randomizer import Noiser
+# from diffusion_policy.model.vision.eraser_randomizer import EraserRandomizer
+from diffusion_policy.model.vision.other_randomizer import OtherRandomizer
+
 logger = logging.getLogger(__name__)
 
 class AttentionPool2d(nn.Module):
@@ -60,7 +66,7 @@ class TimmObsEncoder(ModuleAttrMixin):
             pretrained: bool,
             frozen: bool,
             global_pool: str,
-            transforms: list,
+            # transforms: list,
             # replace BatchNorm with GroupNorm
             use_group_norm: bool=False,
             # use single rgb model for all rgb inputs
@@ -71,7 +77,10 @@ class TimmObsEncoder(ModuleAttrMixin):
             feature_aggregation: str='spatial_embedding',
             downsample_ratio: int=32,
             position_encording: str='learnable',
-            add_gaussian_blur: float=None,
+            #add_gaussian_blur: float=None,
+            random_noise: bool=False,
+            crop_ratio: float=0.95,
+            random_crop: bool=False,
         ):
         """
         Assumes rgb input: B,T,C,H,W
@@ -132,6 +141,7 @@ class TimmObsEncoder(ModuleAttrMixin):
             )
         
         image_shape = None
+        full_image_shape = None
         obs_shape_meta = shape_meta['obs']
         for key, attr in obs_shape_meta.items():
             shape = tuple(attr['shape'])
@@ -139,14 +149,45 @@ class TimmObsEncoder(ModuleAttrMixin):
             if type == 'rgb':
                 assert image_shape is None or image_shape == shape[1:]
                 image_shape = shape[1:]
-        if transforms is not None and not isinstance(transforms[0], torch.nn.Module):
-            assert transforms[0].type == 'RandomCrop'
-            ratio = transforms[0].ratio
-            transforms = [
-                torchvision.transforms.RandomCrop(size=int(image_shape[0] * ratio)),
-                torchvision.transforms.Resize(size=image_shape[0], antialias=True)
-            ] + transforms[1:]
-        transform = nn.Identity() if transforms is None else torch.nn.Sequential(*transforms)
+                full_image_shape = shape
+        # if transforms is not None and not isinstance(transforms[0], torch.nn.Module):
+        #     assert transforms[0].type == 'RandomCrop'
+        #     ratio = transforms[0].ratio
+        #     transforms = [
+        #         torchvision.transforms.RandomCrop(size=int(image_shape[0] * ratio)),
+        #         torchvision.transforms.Resize(size=image_shape[0], antialias=True)
+        #     ] + transforms[1:]
+        # transform = nn.Identity() if transforms is None else torch.nn.Sequential(*transforms)
+
+        this_randomizer = nn.Identity()
+        this_resizer = nn.Identity()
+
+        if random_crop:
+            this_randomizer = CropRandomizer(
+                            input_shape=full_image_shape,
+                            crop_height=crop_ratio*shape[0],
+                            crop_width=crop_ratio*shape[1],
+                            num_crops=1,
+                            pos_enc=False
+                        )
+            this_resizer = torchvision.transforms.Resize(size=image_shape[0], antialias=True)
+
+        this_noiser = nn.Identity()
+        if random_noise:
+            this_noiser = Noiser()
+
+        this_other = nn.Identity()
+        if random_noise:
+            this_other = OtherRandomizer(do_jitter=True)
+
+        this_normalizer = nn.Identity()
+        if imagenet_norm:
+            this_normalizer = torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+        transform = nn.Sequential(
+            this_other, this_noiser, this_randomizer, this_resizer, this_normalizer
+        )
 
         for key, attr in obs_shape_meta.items():
             shape = tuple(attr['shape'])
@@ -182,7 +223,7 @@ class TimmObsEncoder(ModuleAttrMixin):
         self.low_dim_keys = low_dim_keys
         self.key_shape_map = key_shape_map
         self.feature_aggregation = feature_aggregation
-        self.add_gaussian_blur = add_gaussian_blur
+        # self.add_gaussian_blur = add_gaussian_blur
         if model_name.startswith('vit'):
             # assert self.feature_aggregation is None # vit uses the CLS token
             if self.feature_aggregation == 'all_tokens':
@@ -268,8 +309,8 @@ class TimmObsEncoder(ModuleAttrMixin):
             assert img.shape[2:] == self.key_shape_map[key]
             img = img.reshape(B*T, *img.shape[2:])
             img = self.key_transform_map[key](img)
-            if self.add_gaussian_blur:
-                img = img + torch.randn_like(img)*self.add_gaussian_blur
+            # if self.add_gaussian_blur:
+            #     img = img + torch.randn_like(img)*self.add_gaussian_blur
 
             # cv2.imshow('final_im', cv2.cvtColor(((img[-1].permute(1,2,0).cpu().numpy())*255).astype(np.uint8), cv2.COLOR_BGR2RGB))
             # cv2.waitKey(1)
