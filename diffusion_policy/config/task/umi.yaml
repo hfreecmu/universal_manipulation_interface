@@ -67,7 +67,7 @@ shape_meta: &shape_meta
       down_sample_steps: ${task.obs_down_sample_steps} # float
       type: low_dim
       # ignore_by_policy: ${task.ignore_proprioception}
-      ignore_by_policy: True
+      ignore_by_policy: ${task.ignore_proprioception}
 
     # pose with respect to episode start
     # robot0_eef_pos_wrt_start:
