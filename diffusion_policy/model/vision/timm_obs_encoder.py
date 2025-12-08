@@ -165,8 +165,8 @@ class TimmObsEncoder(ModuleAttrMixin):
         if random_crop:
             this_randomizer = CropRandomizer(
                             input_shape=full_image_shape,
-                            crop_height=crop_ratio*shape[0],
-                            crop_width=crop_ratio*shape[1],
+                            crop_height=int(crop_ratio*image_shape[0]),
+                            crop_width=int(crop_ratio*image_shape[1]),
                             num_crops=1,
                             pos_enc=False
                         )
