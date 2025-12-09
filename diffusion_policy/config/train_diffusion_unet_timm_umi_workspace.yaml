@@ -94,7 +94,7 @@ policy:
     share_rgb_model: False
     imagenet_norm: True
 
-    add_gaussian_blur: 0.1
+    add_gaussian_blur: 0.3
 
   num_inference_steps: 16
   obs_as_global_cond: True

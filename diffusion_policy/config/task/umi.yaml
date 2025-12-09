@@ -6,7 +6,7 @@ robot_obs_latency: 0.0001
 gripper_obs_latency: 0.02
 dataset_frequeny: 0 #59.94
 # obs_down_sample_steps: 3 # 3, 1
-obs_down_sample_steps: 1
+obs_down_sample_steps: 2
 
 low_dim_obs_horizon: 2
 img_obs_horizon: 2

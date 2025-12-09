@@ -269,7 +269,7 @@ class TimmObsEncoder(ModuleAttrMixin):
             img = img.reshape(B*T, *img.shape[2:])
             img = self.key_transform_map[key](img)
             if self.add_gaussian_blur:
-                img = img + torch.randn_like(img)*self.add_gaussian_blur
+                img = img + torch.randn_like(img)*self.add_gaussian_blur*torch.rand(1).item()
 
             # cv2.imshow('final_im', cv2.cvtColor(((img[-1].permute(1,2,0).cpu().numpy())*255).astype(np.uint8), cv2.COLOR_BGR2RGB))
             # cv2.waitKey(1)
