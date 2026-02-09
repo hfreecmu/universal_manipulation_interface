@@ -31,34 +31,51 @@ from vine_prune.utils.paths import ASSET_DIR
 def format_int(ind):
     return "{:0>6d}".format(ind)
 
-data_dir = '/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/push_t_exp/demos'
-skip_exps = []
+data_dirs = [
+            '/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse/demos',
+            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_0/demos",
+            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_1/demos",
+            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_2/demos",
+            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_3/demos",
+             ]
+skip_exps = ['bad', 'failed']
 
 subdirs = []
-for subdir_name in os.listdir(data_dir):
-    if subdir_name in skip_exps:
-        continue
-    
-    subdir = os.path.join(data_dir, subdir_name)
-    vid_path = os.path.join(subdir, 'training_data', 'vid.mp4')
-    if not os.path.exists(vid_path):
-        print('no vid for: ', subdir_name)
-        continue
+orig_exp_names = []
+for data_dir in data_dirs:
+        for scene_name in os.listdir(data_dir):
+            scene_dir = os.path.join(data_dir, scene_name)
+            for subdir_name in os.listdir(scene_dir):
+                if subdir_name in skip_exps:
+                    continue
+            
+                subdir = os.path.join(scene_dir, subdir_name)
+                vid_path = os.path.join(subdir, 'training_data', 'vid.mp4')
+                if not os.path.exists(vid_path):
+                    print('no vid for: ', subdir_name)
+                    continue
 
-    subdirs.append(subdir)
+                subdirs.append(subdir)
+                orig_exp_names.append(subdir)
 
-    aug_dir = os.path.join(subdir, 'augmentations')
-    for aug_name in os.listdir(aug_dir):
-        vid_path = os.path.join(aug_dir, aug_name, 'training_data', 'vid.mp4')
-        if not os.path.exists(vid_path):
-            continue
-        
-        subdirs.append(os.path.join(aug_dir, aug_name))
-
+                aug_dir = os.path.join(subdir, 'augmentations')
+                if os.path.exists(aug_dir):
+                    num_augs = 0
+                    for aug_name in os.listdir(aug_dir):
+                        vid_path = os.path.join(aug_dir, aug_name, 'training_data', 'vid.mp4')
+                        if not os.path.exists(vid_path):
+                            continue
+                        num_augs += 1
+                        
+                        subdirs.append(os.path.join(aug_dir, aug_name))
+                    #print(num_augs)
 
 subdirs = sorted(subdirs)
+orig_exp_names = sorted(orig_exp_names)
 
-output = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/example_demo_session/my_zarr.zarr.zip'
+breakpoint()
+
+output = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/example_demo_session/rss_2026_chili_place_plate_diverse.zarr.zip'
 
 if True:
 
@@ -86,14 +103,22 @@ if True:
         eef_rot = eef_pose[...,3:]
         # gripper_widths = gripper['gripper_widths']
 
-        is_closed_orig = gripper['is_closed']
-        is_closed = np.zeros_like(is_closed_orig)
-        # TODO assuming one object grasp
-        closed_start = np.argwhere(is_closed_orig > 0).min()
-        closed_end = np.argwhere(is_closed_orig == 1.0).max() + 1
-        is_closed[closed_start:closed_end] = 1.0
+        # is_closed_orig = gripper['is_closed']
+        # is_closed = np.zeros_like(is_closed_orig)
+        # # TODO assuming one object grasp
+        # closed_start = np.argwhere(is_closed_orig > 0).min()
+        # closed_end = np.argwhere(is_closed_orig == 1.0).max() + 1
+        # # TODO not sure if should round like this or set values normally
+        # is_closed[closed_start:closed_end] = 1.0
+
+        is_closed = gripper['is_closed']
+        #first_closed = np.argwhere(is_closed).min()
+        #is_closed[first_closed] = False
+        is_closed = is_closed.astype(float)
+        # TODO I AM CORRECTING THIS HERE BUT THIS SHOULD BE DONE EARLIER
 
         assert is_closed[0] == 0
+        assert np.max(is_closed) > 0
         # assert is_closed[-1] == 0
 
         # set to match umi
@@ -160,6 +185,10 @@ if True:
 
     valid_mask = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'valid_area.png'), -1)
     gripper_seg_mask = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'gripper_seg_mask.png'), -1)
+
+    valid_mask = cv2.resize(valid_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
+    gripper_seg_mask = cv2.resize(gripper_seg_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
+
 
     def video_to_zarr(replay_buffer, mp4_path, tasks):
         resize_tf = get_image_transform(

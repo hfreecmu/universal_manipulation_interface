@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: umi
+  - task: umi_large
 
 name: train_diffusion_unet_timm
 _target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
@@ -44,7 +44,8 @@ policy:
 
     ##### from scratch #####
     # model_name: 'resnet34.a1_in1k'
-    model_name: 'vit_base_patch16_clip_224.openai'
+    # model_name: 'vit_base_patch16_clip_224.openai'
+    model_name: 'vit_large_patch14_clip_224.openai'
     # model_name: 'convnext_base.clip_laion2b_augreg_ft_in12k'
     pretrained: True
     frozen: False

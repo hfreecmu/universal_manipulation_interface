@@ -24,7 +24,7 @@ from vine_prune.utils.io import (
 )
 from vine_prune.utils.general_utils import (
     create_pose,
-    read_info,
+    read_config,
     read_cam_info,
 )
 
@@ -39,9 +39,9 @@ sys.path.append(GAUSSIAN_SPLATTING_DIR)
 from scene.gaussian_model import GaussianModel
 
 if True:
-    ckpt_path = '/home/hfreeman/Downloads/latest.ckpt'
-    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/DEMOS/push_t_exp/demos/GX010241"
-    AUGMENT_EXTR = False
+    ckpt_path = '/home/hfreeman/Downloads/epoch=0119-train_loss=0.010.ckpt'
+    data_dir = "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/erase_plate/demos/GX010974/tmp/GX011535"
+    AUGMENT_EXTR = True
     AUGMENT_INTR = False
 
     payload = torch.load(open(ckpt_path, 'rb'), map_location='cpu', pickle_module=dill)
@@ -99,7 +99,7 @@ if True:
     segment_info = read_pickle(gripper_segment_path)
     seg_ind_dict = segment_info['label_dict']
 
-    urdf_path = os.path.join(ASSET_DIR, 'gripper_gopro.urdf')
+    urdf_path = os.path.join(ASSET_DIR, 'gripper.urdf')
     robot = URDF.load(urdf_path)
 
     ee_2_cam_path = os.path.join(ASSET_DIR, 'ee_2_cam.yml')
@@ -119,7 +119,7 @@ if True:
 
     if AUGMENT_EXTR:
         # --- Rotation perturbation ---
-        rot_jitter_deg = 2.0  # max ~2 degrees
+        rot_jitter_deg = 5.0  # max ~5 degrees
         jitter_axis = np.random.randn(3)
         jitter_axis /= (np.linalg.norm(jitter_axis) + 1e-9)
         
@@ -132,17 +132,27 @@ if True:
         jitter_rot = R.from_rotvec(jitter_axis * jitter_angle).as_matrix()
         
         # Apply rotation jitter (in world frame)
-        ee_2_cam_rot = jitter_rot @ ee_2_cam_rot
+        # ee_2_cam_rot = jitter_rot @ ee_2_cam_rot
         
         # --- Translation perturbation ---
-        trans_jitter_std = 0.01  # 1 cm (0.01 m)
-        jitter_trans = trans_jitter_std * np.random.randn(3)
+        jitter_v = np.random.normal(size=3)
+        jitter_v /= np.linalg.norm(jitter_v)
+        mag = np.random.uniform(0.0, 0.015) 
+        jitter_trans = mag * jitter_v
         
         # Apply translation jitter
-        ee_2_cam_trans = ee_2_cam_trans + jitter_trans
-    M_ee2cam = create_pose(ee_2_cam_rot, ee_2_cam_trans)
+        # ee_2_cam_trans = ee_2_cam_trans + jitter_trans
 
-    exp_info = read_info(data_dir)
+        M_jitter = create_pose(jitter_rot, jitter_trans)
+    else:
+        M_jitter = np.eye(4)
+
+    M_ee2cam = create_pose(ee_2_cam_rot, ee_2_cam_trans)
+    M_ee2cam = M_ee2cam @ M_jitter
+
+    exp_info = read_config(data_dir)
+    min_drive_joint = exp_info['min_drive_joint']
+
     fisheye_calib_dir = os.path.join(GOPRO_CALIB_DIR, exp_info['fisheye_calib'])
     fisheye_camera_info = read_cam_info(fisheye_calib_dir)
     fisheye_K = torch.FloatTensor(np.array(fisheye_camera_info['K']).reshape(3, 3)).cuda()
@@ -187,6 +197,7 @@ if True:
         'seg_ind_dict': seg_ind_dict,
         'M_ee2cam': M_ee2cam,
         'fisheye_info': fisheye_info,
+        'min_drive_joint': min_drive_joint
     }
 
     env = gymnasium.make('splat_env/SplatWorld-v0', env_data=env_data)
@@ -251,13 +262,15 @@ if True:
             action = get_real_umi_action(raw_action, obs_data, action_pose_repr)
             del result
         
-        # for action_ind in range(1, 9):
-        for action_ind in range(1, 5):
+        # for action_ind in range(0, 9):
+        for action_ind in range(1, 7):
             prev_obs = obs
         
             aa = action[action_ind]
 
+            # env needs it to round rn
             gripper_action = np.clip(aa[-1], 0, 1).round()
+            # gripper_action = np.clip(aa[-1], 0, 1)
 
             step = {
                 'ee_pose': aa[0:6],

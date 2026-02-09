@@ -55,8 +55,8 @@ def vis_tf(data, input_res=res):
     valid_mask = np.ascontiguousarray(f_mask(VALID_MASK))
     gripper_seg_mask = np.ascontiguousarray(f_mask(GRIPPER_SEG_MASK))
 
-    img[gripper_seg_mask > 0] = 255
-    img[valid_mask == 0] = 0
+    # img[gripper_seg_mask > 0] = 255
+    # img[valid_mask == 0] = 0
 
     data['color'] = img
     return data
@@ -101,7 +101,9 @@ transform = [tf]
 
 max_obs_buffer_size = 60
 # camera_obs_latency = 0.125 #0.17
-camera_obs_latency = 0
+# camera_obs_latency = 0
+# camera_obs_latency = 0.17
+camera_obs_latency = 0.17
 
 enable_multi_cam_vis = True
 

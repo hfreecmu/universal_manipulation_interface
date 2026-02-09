@@ -1,4 +1,4 @@
-name: umi
+name: umi_large
 
 # camera_obs_latency: 0.125
 camera_obs_latency: 0.0
@@ -10,7 +10,7 @@ dataset_frequeny: 0 #59.94
 obs_down_sample_steps: 1
 
 low_dim_obs_horizon: 2
-img_obs_horizon: 2
+img_obs_horizon: 1
 action_horizon: 16
 ignore_proprioception: False
 

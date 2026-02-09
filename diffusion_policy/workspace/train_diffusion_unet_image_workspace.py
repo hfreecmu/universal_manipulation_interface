@@ -101,7 +101,10 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
 
         # resume training
         if cfg.training.resume:
-            lastest_ckpt_path = self.get_checkpoint_path()
+            if cfg.training.ckpt_path is not None:
+                lastest_ckpt_path = pathlib.Path(cfg.training.ckpt_path)
+            else:
+                lastest_ckpt_path = self.get_checkpoint_path()
             if lastest_ckpt_path.is_file():
                 accelerator.print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
@@ -110,7 +113,7 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
         dataset: BaseImageDataset
         dataset = hydra.utils.instantiate(cfg.task.dataset)
         assert isinstance(dataset, BaseImageDataset) or isinstance(dataset, BaseDataset)
-        train_dataloader = DataLoader(dataset, **cfg.dataloader)
+        train_dataloader = DataLoader(dataset, drop_last=True, **cfg.dataloader)
 
         # compute normalizer on the main process and save to disk
         normalizer_path = os.path.join(self.output_dir, 'normalizer.pkl')
@@ -124,7 +127,7 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
 
         # configure validation dataset
         val_dataset = dataset.get_validation_dataset()
-        val_dataloader = DataLoader(val_dataset, **cfg.val_dataloader)
+        val_dataloader = DataLoader(val_dataset, drop_last=True, **cfg.val_dataloader)
         print('train dataset:', len(dataset), 'train dataloader:', len(train_dataloader))
         print('val dataset:', len(val_dataset), 'val dataloader:', len(val_dataloader))
 
@@ -142,7 +145,8 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
                     // cfg.training.gradient_accumulate_every,
             # pytorch assumes stepping LRScheduler every epoch
             # however huggingface diffusers steps it every batch
-            last_epoch=self.global_step-1
+            # last_epoch=self.global_step-1
+            last_epoch=-1
         )
 
         # configure ema
