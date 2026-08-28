@@ -38,7 +38,7 @@ GRIPPER_SEG_MASK = cv2.imread(os.path.join(ASSET_DIR, 'gripper_masks', 'gripper_
 mask_input_res = (960, 720)
 
 with SharedMemoryManager() as shm_manager:
-    ckpt_path = '/home/hfreeman/Downloads/sugar_rotate_v2.ckpt'
+    ckpt_path = '/home/hfreeman/Downloads/epoch=0119-train_loss=0.011.ckpt'
     thresh_closed = True
 
     VID_DIR = '/home/hfreeman/Downloads/vis_pos'

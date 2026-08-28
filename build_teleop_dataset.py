@@ -147,12 +147,12 @@ if True:
         robot_timestamps_orig = np.copy(robot_timestamps)
         robot_timestamps, (eef_pos, eef_rot) = remove_duplicate_times(robot_timestamps_orig, [eef_pos, eef_rot])
         if robot_timestamps_orig.shape[0] != robot_timestamps.shape[0]:
-            print('WARNINNG DUPLICATE ROBOT TS')
+            print('WARNING DUPLICATE ROBOT TS')
 
         gripper_timestamps_orig = np.copy(gripper_timestamps)
         gripper_timestamps, [is_closed] = remove_duplicate_times(gripper_timestamps_orig, [is_closed])
         if gripper_timestamps_orig.shape[0] != gripper_timestamps.shape[0]:
-            print('WARNINNG DUPLICATE GRIPPER TS')
+            print('WARNING DUPLICATE GRIPPER TS')
 
         # now we need to interpolate
         dt = 1/FPS

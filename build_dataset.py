@@ -32,13 +32,9 @@ def format_int(ind):
     return "{:0>6d}".format(ind)
 
 data_dirs = [
-            '/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse/demos',
-            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_0/demos",
-            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_1/demos",
-            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_2/demos",
-            "/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/chili_place_diverse_3/demos",
+            '/home/hfreeman/harry_ws/repos/pruner_track/datasets/rss_2026/DEMOS/ur5/demos',
              ]
-skip_exps = ['bad', 'failed']
+skip_exps = ['bad', 'failed', 'no_dino', 'ur5_debug']
 
 subdirs = []
 orig_exp_names = []
@@ -75,7 +71,7 @@ orig_exp_names = sorted(orig_exp_names)
 
 breakpoint()
 
-output = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/example_demo_session/rss_2026_chili_place_plate_diverse.zarr.zip'
+output = '/home/hfreeman/harry_ws/repos/pruner_track/submodules/universal_manipulation_interface/example_demo_session/chili_place_plate_umi_v2.zarr.zip'
 
 if True:
 
@@ -115,6 +111,14 @@ if True:
         #first_closed = np.argwhere(is_closed).min()
         #is_closed[first_closed] = False
         is_closed = is_closed.astype(float)
+        # # TODO WARNING MAJOR JUST SETTING THIS FOR MICRO!!!
+        # is_closed[:] = 0.0
+
+        # # # for umi
+        # gripper_widths = gripper['gripper_widths']
+        # width = np.clip(gripper_widths, 0.0, 0.08)
+        # is_closed = 1.0 - width / 0.08
+        
         # TODO I AM CORRECTING THIS HERE BUT THIS SHOULD BE DONE EARLIER
 
         assert is_closed[0] == 0
@@ -189,12 +193,14 @@ if True:
     valid_mask = cv2.resize(valid_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
     gripper_seg_mask = cv2.resize(gripper_seg_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
 
+    # valid_mask = cv2.imread('/home/hfreeman/harry_ws/repos/pruner_track/assets/umi_gripper/masks/valid_area.png', -1)
+    # gripper_seg_mask = cv2.imread('/home/hfreeman/harry_ws/repos/pruner_track/assets/umi_gripper/masks/gripper_seg_mask.png', -1)
+
+    # valid_mask_resize = cv2.resize(valid_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
+    # gripper_seg_mask_resize = cv2.resize(gripper_seg_mask, (480, 360), interpolation=cv2.INTER_NEAREST)
+
 
     def video_to_zarr(replay_buffer, mp4_path, tasks):
-        resize_tf = get_image_transform(
-            in_res=(iw, ih),
-            out_res=out_res
-        )
         tasks = sorted(tasks, key=lambda x: x['frame_start'])
         camera_idx = None
         for task in tasks:
@@ -211,6 +217,10 @@ if True:
         
         with av.open(mp4_path) as container:
             in_stream = container.streams.video[0]
+            resize_tf = get_image_transform(
+                in_res=(in_stream.width, in_stream.height),
+                out_res=out_res
+            )
             # in_stream.thread_type = "AUTO"
             in_stream.thread_count = 1
             buffer_idx = 0
@@ -229,8 +239,13 @@ if True:
                     # do current task
                     img = frame.to_ndarray(format='rgb24')
 
-                    img[gripper_seg_mask > 0] = 255
-                    img[valid_mask == 0] = 0
+                    if True or img.shape[0:2] == gripper_seg_mask.shape[0:2]:
+                        img[gripper_seg_mask > 0] = 255
+                        img[valid_mask == 0] = 0
+                    else:
+                        img[gripper_seg_mask_resize > 0] = 255
+                        img[valid_mask_resize == 0] = 0
+                    # already applied but not perfrect so doing again I guese
                         
                     # mask out gripper
                     # img = draw_predefined_mask(img, color=(0,0,0), 

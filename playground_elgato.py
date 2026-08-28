@@ -55,7 +55,7 @@ def solve_table_collision(ee_pose, gripper_width, height_threshold, tcp_offset):
     delta = max(height_threshold - np.min(transformed_keypoints[:, 2]), 0)
     ee_pose[2] += delta
 
-def solve_workspace_collision(ee_pose, x_threshold, z_threshold):
+def solve_workspace_collision(ee_pose, x_threshold, z_threshold, z_min_threshold):
     
     if x_threshold is not None:
         delta = min(x_threshold - ee_pose[0], 0)
@@ -64,6 +64,10 @@ def solve_workspace_collision(ee_pose, x_threshold, z_threshold):
     if z_threshold is not None:
         delta = min(z_threshold - ee_pose[2], 0)
         ee_pose[2] += delta
+
+    if z_min_threshold is not None:
+          delta = max(z_min_threshold - ee_pose[2], 0)
+          ee_pose[2] += delta
 
 def get_obs(
         camera_obs_horizon,
@@ -150,10 +154,10 @@ def get_obs(
 # def run(robot_env):
 def run(robot_env):
     with SharedMemoryManager() as shm_manager:
-        ckpt_path = '/home/hfreeman/Downloads/for_harry_diverse/chili_place_plate_diverse_large.ckpt'
-        CAMERA_OBS_HORIZON = 1
+        ckpt_path = '/home/hfreeman/Downloads/epoch=0119-train_loss=0.011.ckpt'
+        CAMERA_OBS_HORIZON = 2
         thresh_closed = True
-        TRIAL_NUM=14
+        TRIAL_NUM=24
 
         STOP_WHEN_OPEN = True
         CLOSED_THRESH = 0.1
@@ -164,9 +168,10 @@ def run(robot_env):
 
         X_THRESHOLD = None #0.4 #None
         Z_THRESHOLD = None #0.2 #None
+        Z_MIN_THRESHOLD = 0.05
 
         VIDEO_PATHS = [
-                f'/home/hfreeman/Downloads/chili_diverse_large/{TRIAL_NUM}.mp4'
+                f'/home/hfreeman/Downloads/microwave_trial/{TRIAL_NUM}.mp4'
             ]
         
         for vp in VIDEO_PATHS:
@@ -292,9 +297,9 @@ def run(robot_env):
         gripper_action_latency = 0.1
         action_exec_latency = 0.01
         
-        steps_per_inference = 6
+        # steps_per_inference = 6
         # steps_per_inference = 8
-        # steps_per_inference = 12
+        steps_per_inference = 12
         # steps_per_inference = 16
 
         # mug is 10 and 8
@@ -530,6 +535,7 @@ def run(robot_env):
                             ee_pose=target_pose[robot_idx * 7: robot_idx * 7 + 6],
                             x_threshold=X_THRESHOLD,
                             z_threshold=Z_THRESHOLD,
+                            z_min_threshold=Z_MIN_THRESHOLD,
                         )
 
                 # for target_pose in this_target_poses:
@@ -583,6 +589,7 @@ def run(robot_env):
                 iter_idx += steps_per_inference
         except KeyboardInterrupt:
             print("Interrupted")
+            robot_env_unwarpped.close()
 
         camera.stop_recording()
 
